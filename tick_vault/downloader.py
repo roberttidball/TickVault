@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 
 from tqdm.asyncio import tqdm
 
@@ -13,7 +13,7 @@ from .config import CONFIG
 async def download_range(
     symbol: str,
     start: datetime,
-    end: datetime,
+    end: datetime = datetime.now(tz=timezone.utc),
     proxies: list[str] | None = None,
 ) -> None:
     """
@@ -26,7 +26,8 @@ async def download_range(
     Args:
         symbol: The trading pair symbol (e.g., 'XAUUSD', 'EURUSD')
         start: Start datetime of the range (inclusive, rounded down to hour)
-        end: End datetime of the range (exclusive, rounded down to hour)
+        end: Optional, End datetime of the range (exclusive, rounded down to hour).
+            If not provided uses datetime.now
         proxies: Optional list of proxy URLs. If None or empty, workers run
             without proxies. Workers are distributed evenly across proxies.
 
