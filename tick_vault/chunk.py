@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from pydantic import BaseModel, Field, field_validator
@@ -30,37 +30,54 @@ class TickChunk(BaseModel, frozen=True):
         description="The hour for which to fetch data (must be rounded to the hour)",
     )
 
-    @field_validator("time")
+    @field_validator("time", mode="before")
     @classmethod
-    def validate_datetime_is_hourly(cls, time: datetime) -> datetime:
+    def validate_and_normalize_time(cls, time: datetime) -> datetime:
         """
-        Validate that the datetime is rounded to the hour.
+        Validate that the datetime is rounded to the hour and normalize to UTC.
 
         The datetime must have zero minutes, seconds, and microseconds.
-        This ensures we're requesting data for complete hourly periods.
+        If the datetime is naive (no timezone), it's assumed to be UTC and
+        converted to a timezone-aware UTC datetime. If it's already timezone-aware,
+        it's converted to UTC.
+
+        This ensures all tick data timestamps are in UTC, avoiding daylight saving
+        time issues and maintaining consistency with financial market conventions.
 
         Args:
-            time: The datetime to validate
+            time: The datetime to validate and normalize
 
         Returns:
-            datetime: The validated datetime
+            datetime: The validated datetime in UTC with tzinfo=timezone.utc
 
         Raises:
             ValueError: If datetime contains non-zero minutes, seconds, or microseconds
+            TypeError: if time is not a datetime
 
         Examples:
-            Valid: datetime(2024, 3, 2, 12, 0, 0, 0)
-            Invalid: datetime(2024, 3, 2, 12, 30, 0, 0)
-            Invalid: datetime(2024, 3, 2, 12, 0, 30, 0)
-            Invalid: datetime(2024, 3, 2, 12, 0, 0, 500)
+            Valid: datetime(2024, 3, 2, 12, 0, 0, 0) -> normalized to UTC
+            Valid: datetime(2024, 3, 2, 12, 0, 0, 0, tzinfo=timezone.utc) -> already UTC
+            Invalid: datetime(2024, 3, 2, 12, 30, 0, 0) -> raises ValueError
         """
+        if not isinstance(time, datetime):
+            raise TypeError(
+                "Expected datetime object for time but got"
+                f" {time} which is {type(time).__name__}"
+            )
+
         if time.minute != 0 or time.second != 0 or time.microsecond != 0:
             raise ValueError(
                 f"Datetime must be rounded to the hour (minute=0, second=0, microsecond=0). "
                 f"Got: {time} (minute={time.minute}, second={time.second}, microsecond={time.microsecond})"
             )
 
-        return time
+        # Normalize to UTC
+        if time.tzinfo is None:
+            # Naive datetime - assume UTC
+            return time.replace(tzinfo=timezone.utc)
+        else:
+            # Timezone-aware - convert to UTC
+            return time.astimezone(timezone.utc)
 
     @property
     def url(self) -> str:
@@ -136,7 +153,7 @@ class TickChunk(BaseModel, frozen=True):
         """
         if not isinstance(content, bytes):
             raise TypeError(f"Content must be bytes, got {type(content).__name__}")
-        
+
         if not content:
             raise ValueError("Got empty content")
 

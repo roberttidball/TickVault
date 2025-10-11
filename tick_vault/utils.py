@@ -1,22 +1,26 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 def generate_hourly_datetimes(start: datetime, end: datetime) -> list[datetime]:
     """
-    Generate all hourly datetime objects within a given range.
+    Generate all hourly datetime objects within a given range in UTC.
 
-    Creates a list of datetime objects, one for each hour from start to end,
+    Creates a list of UTC datetime objects, one for each hour from start to end,
     rounded down to the hour. The end hour is excluded to avoid including
     incomplete data (e.g., when called with datetime.now()).
 
+    All input datetimes are normalized to UTC before processing. If naive datetimes
+    are provided, they are assumed to be UTC. This avoids daylight saving time
+    issues and ensures consistency with financial market data conventions.
+
     Args:
-        start: The start datetime of the range (will be rounded down to the hour)
-        end: The end datetime of the range (will be rounded down to the hour, excluded)
+        start: The start datetime of the range (will be normalized to UTC and rounded down)
+        end: The end datetime of the range (will be normalized to UTC and rounded down, excluded)
 
     Returns:
-        list[datetime]: A list of datetime objects, one for each complete hour
-            in the range [start_hour, end_hour). Returns empty list if the
-            rounded start and end are the same hour.
+        list[datetime]: A list of timezone-aware UTC datetime objects, one for each
+            complete hour in the range [start_hour, end_hour). Returns empty list
+            if the rounded start and end are the same hour.
 
     Raises:
         TypeError: If start or end are not datetime objects
@@ -26,16 +30,24 @@ def generate_hourly_datetimes(start: datetime, end: datetime) -> list[datetime]:
         >>> start = datetime(2024, 3, 2, 12, 30)
         >>> end = datetime(2024, 3, 2, 15, 45)
         >>> generate_hourly_datetimes(start, end)
-        [datetime(2024, 3, 2, 12, 0),
-         datetime(2024, 3, 2, 13, 0),
-         datetime(2024, 3, 2, 14, 0),
-         datetime(2024, 3, 2, 15, 0)]
+        [datetime(2024, 3, 2, 12, 0, tzinfo=timezone.utc),
+         datetime(2024, 3, 2, 13, 0, tzinfo=timezone.utc),
+         datetime(2024, 3, 2, 14, 0, tzinfo=timezone.utc),
+         datetime(2024, 3, 2, 15, 0, tzinfo=timezone.utc)]
 
         >>> # Same hour after rounding
         >>> start = datetime(2024, 3, 2, 12, 15)
         >>> end = datetime(2024, 3, 2, 12, 45)
         >>> generate_hourly_datetimes(start, end)
         []
+
+        >>> # Handles timezone-aware datetimes
+        >>> from datetime import timezone
+        >>> start = datetime(2024, 3, 2, 12, 0, tzinfo=timezone.utc)
+        >>> end = datetime(2024, 3, 2, 14, 0, tzinfo=timezone.utc)
+        >>> result = generate_hourly_datetimes(start, end)
+        >>> all(dt.tzinfo == timezone.utc for dt in result)
+        True
     """
     if not isinstance(start, datetime):
         raise TypeError(
@@ -51,6 +63,17 @@ def generate_hourly_datetimes(start: datetime, end: datetime) -> list[datetime]:
         raise ValueError(
             f"End datetime must be after start datetime. Got start={start}, end={end}"
         )
+
+    # Normalize to UTC
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+    else:
+        start = start.astimezone(timezone.utc)
+    
+    if end.tzinfo is None:
+        end = end.replace(tzinfo=timezone.utc)
+    else:
+        end = end.astimezone(timezone.utc)
 
     # Round down to the hour
     current = start.replace(minute=0, second=0, microsecond=0)
