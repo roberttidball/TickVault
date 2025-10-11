@@ -86,4 +86,4 @@ async def metadata_worker(
 
                 except asyncio.TimeoutError:
                     # Long timeout - assume parent crashed, exit
-                    break
+                    raise # To ensure other processes stop, maybe download workers are stuck

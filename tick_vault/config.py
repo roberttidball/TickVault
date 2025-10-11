@@ -4,7 +4,7 @@ from pydantic import BaseModel, model_validator
 
 
 class Config(BaseModel, frozen=True):
-    base_directory: Path = Path("./tick_vault")
+    base_directory: Path = Path("./tick_vault_data")
     fetch_max_retry_attempts: int = 3
     fetch_base_retry_delay: float = 1.0
     worker_per_proxy: int = 10
