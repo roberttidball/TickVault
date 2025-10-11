@@ -136,14 +136,12 @@ class TickChunk(BaseModel, frozen=True):
         """
         Save tick data content to disk.
 
-        Creates parent directories if they don't exist. Raises an error if
-        the file already exists to prevent accidental overwrites.
+        Creates parent directories if they don't exist. Overwrites any previous data.
 
         Args:
             content: The raw tick data bytes to save
 
         Raises:
-            FileExistsError: If the file already exists on disk
             TypeError: If content is not bytes
             ValueError: If content is empty
 
@@ -158,12 +156,6 @@ class TickChunk(BaseModel, frozen=True):
             raise ValueError("Got empty content")
 
         file_path = self.path()
-
-        if file_path.exists():
-            raise FileExistsError(
-                f"File already exists: {file_path}. "
-                "Delete the existing file first if you want to overwrite."
-            )
 
         # Create parent directories if they don't exist
         file_path.parent.mkdir(parents=True, exist_ok=True)
