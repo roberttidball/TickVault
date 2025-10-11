@@ -1,0 +1,1 @@
+DUKASCOPY_DATA_FEED_BASE = "https://datafeed.dukascopy.com/datafeed/"

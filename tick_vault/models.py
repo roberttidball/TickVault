@@ -4,6 +4,8 @@ from pathlib import Path
 from pydantic import BaseModel, Field, field_validator
 
 from .config import CONFIG
+from .constants import DUKASCOPY_DATA_FEED_BASE
+from .utils import format_relative_tick_path
 
 
 class TickChunk(BaseModel, frozen=True):
@@ -76,14 +78,8 @@ class TickChunk(BaseModel, frozen=True):
             >>> chunk.url
             'https://datafeed.dukascopy.com/datafeed/XAUUSD/2024/02/02/12h_ticks.bi5'
         """
-        year = self.time.year
-        month = self.time.month - 1  # Dukascopy uses 0-indexed months (00-11)
-        day = self.time.day
-        hour = self.time.hour
-
-        return (
-            f"https://datafeed.dukascopy.com/datafeed/{self.symbol}/"
-            f"{year}/{month:02d}/{day:02d}/{hour:02d}h_ticks.bi5"
+        return DUKASCOPY_DATA_FEED_BASE + format_relative_tick_path(
+            self.symbol, self.time
         )
 
     def path(self, base: str | Path | None = None) -> Path:
@@ -117,19 +113,7 @@ class TickChunk(BaseModel, frozen=True):
         else:
             base_dir = CONFIG.save_directory
 
-        year = self.time.year
-        month = self.time.month - 1  # Dukascopy uses 0-indexed months (00-11)
-        day = self.time.day
-        hour = self.time.hour
-
-        return (
-            base_dir
-            / self.symbol
-            / str(year)
-            / f"{month:02d}"
-            / f"{day:02d}"
-            / f"{hour:02d}h_ticks.bi5"
-        )
+        return base_dir / format_relative_tick_path(self.symbol, self.time)
 
     def save(self, content: bytes) -> None:
         """
