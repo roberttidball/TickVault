@@ -1,7 +1,7 @@
 """Metadata database module for managing tick data download status."""
 
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .chunk import TickChunk
@@ -229,8 +229,8 @@ class MetadataDB:
         min_timestamp, max_timestamp, count = result
 
         # Calculate expected number of hours
-        first_dt = datetime.fromtimestamp(min_timestamp)
-        last_dt = datetime.fromtimestamp(max_timestamp)
+        first_dt = datetime.fromtimestamp(min_timestamp, tz=timezone.utc)
+        last_dt = datetime.fromtimestamp(max_timestamp, tz=timezone.utc)
 
         # Generate all expected hours
         expected_hours = generate_hourly_datetimes(
@@ -254,7 +254,7 @@ class MetadataDB:
             missing_timestamps = expected_timestamps - existing_timestamps
 
             missing_dates = [
-                datetime.fromtimestamp(ts).isoformat()
+                datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
                 for ts in sorted(missing_timestamps)
             ]
             logger.error(
@@ -296,8 +296,8 @@ class MetadataDB:
         table_name = self._get_table_name(symbol)
 
         # Round to hours
-        start_hour = start.replace(minute=0, second=0, microsecond=0)
-        end_hour = end.replace(minute=0, second=0, microsecond=0)
+        start_hour = start.replace(minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
+        end_hour = end.replace(minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
 
         start_timestamp = int(start_hour.timestamp())
         end_timestamp = int(end_hour.timestamp())
@@ -312,7 +312,7 @@ class MetadataDB:
         )
 
         available_chunks = [
-            TickChunk(symbol=symbol, time=datetime.fromtimestamp(row[0]))
+            TickChunk(symbol=symbol, time=datetime.fromtimestamp(row[0], tz=timezone.utc))
             for row in cursor.fetchall()
         ]
 

@@ -50,15 +50,11 @@ def generate_hourly_datetimes(start: datetime, end: datetime) -> list[datetime]:
         True
     """
     if not isinstance(start, datetime):
-        raise TypeError(
-            f"Start must be a datetime object, got {type(start).__name__}"
-        )
-    
+        raise TypeError(f"Start must be a datetime object, got {type(start).__name__}")
+
     if not isinstance(end, datetime):
-        raise TypeError(
-            f"End must be a datetime object, got {type(end).__name__}"
-        )
-    
+        raise TypeError(f"End must be a datetime object, got {type(end).__name__}")
+
     if end <= start:
         raise ValueError(
             f"End datetime must be after start datetime. Got start={start}, end={end}"
@@ -69,7 +65,7 @@ def generate_hourly_datetimes(start: datetime, end: datetime) -> list[datetime]:
         start = start.replace(tzinfo=timezone.utc)
     else:
         start = start.astimezone(timezone.utc)
-    
+
     if end.tzinfo is None:
         end = end.replace(tzinfo=timezone.utc)
     else:
@@ -83,7 +79,7 @@ def generate_hourly_datetimes(start: datetime, end: datetime) -> list[datetime]:
     while current < end_hour:
         datetimes.append(current)
         current += timedelta(hours=1)
-    
+
     return datetimes
 
 def format_relative_tick_path(symbol: str, time: datetime) -> str:
