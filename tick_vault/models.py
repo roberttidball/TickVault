@@ -123,7 +123,7 @@ class TickChunk(BaseModel, frozen=True):
         hour = self.time.hour
 
         return (
-            CONFIG.save_directory
+            base_dir
             / self.symbol
             / str(year)
             / f"{month:02d}"
