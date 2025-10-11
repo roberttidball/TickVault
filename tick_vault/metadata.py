@@ -4,8 +4,8 @@ import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from .config import CONFIG
 from .chunk import TickChunk
+from .config import CONFIG
 from .utils import generate_hourly_datetimes
 
 
@@ -80,33 +80,51 @@ class MetadataDB:
         )
         self.conn.commit()
 
-    def insert_row(self, chunk: TickChunk) -> None:
+    def insert_rows(self, chunks: list[TickChunk]) -> None:
         """
-        Insert or update a metadata row for a tick chunk.
+        Insert or update multiple metadata rows in a single transaction.
 
-        If an entry already exists for this timestamp, it will be replaced.
-        This allows for re-downloading and updating metadata.
+        Chunks are grouped by symbol, and each symbol's data is inserted in one
+        transaction. If an entry already exists for a timestamp, it will be replaced.
 
         Args:
-            chunk: The TickChunk representing the hour of data
+            chunks: List of TickChunk objects to insert
 
         Example:
             >>> db = MetadataDB()
-            >>> chunk = TickChunk(symbol='XAUUSD', time=datetime(2024, 3, 2, 12))
-            >>> db.insert_row(chunk, has_data=True)
+            >>> chunks = [
+            ...     TickChunk(symbol='XAUUSD', time=datetime(2024, 1, 1, i, 0, 0))
+            ...     for i in range(24)
+            ... ]
+            >>> db.insert_rows_batch(chunks)
         """
-        self._ensure_table_exists(chunk.symbol)
-        table_name = self._get_table_name(chunk.symbol)
-        timestamp = int(chunk.time.timestamp())
+        if not chunks:
+            return
 
-        self.conn.execute(
-            f"""
-            INSERT OR REPLACE INTO {table_name} (timestamp, has_data)
-            VALUES (?, ?)
-            """,
-            (timestamp, int(chunk.path().exists())),
-        )
-        self.conn.commit()
+        # Group chunks by symbol
+        chunks_by_symbol: dict[str, list[TickChunk]] = {}
+        for chunk in chunks:
+            if chunk.symbol not in chunks_by_symbol:
+                chunks_by_symbol[chunk.symbol] = []
+            chunks_by_symbol[chunk.symbol].append(chunk)
+
+        # Insert all chunks for each symbol in a single transaction
+        for symbol, symbol_chunks in chunks_by_symbol.items():
+            self._ensure_table_exists(symbol)
+            table_name = self._get_table_name(symbol)
+
+            # Prepare data tuples (timestamp, has_data)
+            data = [
+                (int(chunk.time.timestamp()), int(chunk.path().exists()))
+                for chunk in symbol_chunks
+            ]
+
+            # Bulk insert with single commit
+            self.conn.executemany(
+                f"INSERT OR REPLACE INTO {table_name} (timestamp, has_data) VALUES (?, ?)",
+                data,
+            )
+            self.conn.commit()
 
     def find_not_attempted_chunks(
         self, symbol: str, start: datetime, end: datetime

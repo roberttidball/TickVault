@@ -11,15 +11,19 @@ async def metadata_worker(
     result_queue: asyncio.Queue[TickChunk | None], db_path: str | None = None
 ) -> None:
     """
-    Worker coroutine that processes download results and updates metadata.
+    Worker coroutine that processes download results and updates metadata in batches.
 
     This worker consumes results from result_queue and updates the metadata
-    database with download status. It runs until it receives None as a
-    sentinel value or times out waiting for results. The worker maintains
-    a single database connection for efficient batch processing.
+    database using batch inserts. It accumulates chunks in a batch and commits when:
+    1. Batch size reaches CONFIG.metadata_update_batch_size
+    2. Timeout occurs waiting for next chunk (partial batch flush)
+    3. Shutdown signal (None) is received (final batch flush)
+
+    The worker runs until it receives None as a sentinel value or times out
+    waiting for results, assuming the parent process crashed.
 
     Args:
-        result_queue: Queue of chunk or None for shutdown
+        result_queue: Queue of TickChunk objects or None for shutdown
         db_path: Optional path to the metadata database. If None, uses
             CONFIG.metadata_db_path
 
@@ -29,27 +33,57 @@ async def metadata_worker(
 
     Workflow:
         1. Initialize database connection
-        2. Wait for result from result_queue (with timeout)
-        3. If timeout occurs, exit gracefully (assumes parent crashed)
-        4. If result is None, break and exit
-        5. Insert metadata row with chunk
-        6. Repeat until shutdown signal received
-        7. Close database connection on exit
+        2. Accumulate chunks in a batch
+        3. When batch is full or timeout occurs, flush to database
+        4. On shutdown signal (None), flush any remaining chunks
+        5. Close database connection on exit
     """
     with MetadataDB(db_path) as db:
+        batch: list[TickChunk] = []
+
         while True:
             try:
                 # Wait for chunk with timeout
                 chunk = await asyncio.wait_for(
-                    result_queue.get(), timeout=CONFIG.worker_queue_timeout
+                    result_queue.get(), timeout=CONFIG.metadata_update_batch_timeout
                 )
+
+                # None is the sentinel value to stop the worker
+                if chunk is None:
+                    # Process any remaining chunks in batch
+                    if batch:
+                        db.insert_rows(batch)
+                    break
+
+                # Add to batch
+                batch.append(chunk)
+
+                # Process batch if it reaches target size
+                if len(batch) >= CONFIG.metadata_update_batch_size:
+                    db.insert_rows(batch)
+                    batch.clear()
+
             except asyncio.TimeoutError:
-                # Timeout - assume parent process crashed or no more work
-                break
+                # Timeout - process accumulated batch if any
+                if batch:
+                    db.insert_rows(batch)
+                    batch.clear()
 
-            # None is the sentinel value to stop the worker
-            if chunk is None:
-                break
+                # Check if we should exit (parent process may have crashed)
+                # If the queue has been empty for the main timeout period, exit
+                try:
+                    chunk = await asyncio.wait_for(
+                        result_queue.get(),
+                        timeout=CONFIG.worker_queue_timeout
+                        - CONFIG.metadata_update_batch_timeout,
+                    )
 
-            # Insert or update metadata for this chunk
-            db.insert_row(chunk)
+                    if chunk is None:
+                        break
+
+                    # Got a chunk, start new batch
+                    batch.append(chunk)
+
+                except asyncio.TimeoutError:
+                    # Long timeout - assume parent crashed, exit
+                    break
