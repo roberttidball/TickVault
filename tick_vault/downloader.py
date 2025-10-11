@@ -128,8 +128,6 @@ async def download_range(
             # Feed next chunk to workers if available
             if chunks_remaining:
                 await chunk_queue.put(chunks_remaining.pop(0))
-            else:
-                await chunk_queue.put(None)
 
         pbar.close()
         print(f"✓ Successfully downloaded {total_chunks} chunks for {symbol}")
