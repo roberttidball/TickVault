@@ -133,7 +133,7 @@ class TickChunk(BaseModel, frozen=True):
 
         return base_dir / format_relative_tick_path(self.symbol, self.time)
 
-    def save(self, content: bytes) -> None:
+    def save(self, content: bytes, base: str | Path | None = None) -> None:
         """
         Save tick data content to disk.
 
@@ -141,6 +141,8 @@ class TickChunk(BaseModel, frozen=True):
 
         Args:
             content: The raw tick data bytes to save
+            base: The base directory where data files are stored. If None,
+                uses CONFIG.save_directory. Must be a directory, not a file.
 
         Raises:
             TypeError: If content is not bytes
@@ -156,7 +158,7 @@ class TickChunk(BaseModel, frozen=True):
         if not content:
             raise ValueError("Got empty content")
 
-        file_path = self.path()
+        file_path = self.path(base)
         logger.debug(f"Saving chunk to {file_path}")
 
         # Create parent directories if they don't exist
@@ -165,12 +167,14 @@ class TickChunk(BaseModel, frozen=True):
         # Write content to file
         file_path.write_bytes(content)
 
-    def load(self) -> bytes:
+    def load(self, base: str | Path | None = None) -> bytes:
         """
         Load tick data content from disk.
 
         Returns:
             bytes: The raw tick data bytes
+            base: The base directory where data files are stored. If None,
+                uses CONFIG.save_directory. Must be a directory, not a file.
 
         Raises:
             FileNotFoundError: If the file doesn't exist on disk
@@ -181,7 +185,7 @@ class TickChunk(BaseModel, frozen=True):
             >>> isinstance(data, bytes)
             True
         """
-        file_path = self.path()
+        file_path = self.path(base)
         logger.debug(f"Loading chunk from {file_path}")
 
         if not file_path.exists():
