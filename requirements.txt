@@ -1,4 +1,6 @@
-httpx[socks]
-pydantic
+numpy
+pandas
 tqdm
+pydantic
 pydantic-settings
+httpx[socks]
