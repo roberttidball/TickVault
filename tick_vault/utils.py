@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 
 def generate_hourly_datetimes(start: datetime, end: datetime) -> list[datetime]:
@@ -62,14 +62,14 @@ def generate_hourly_datetimes(start: datetime, end: datetime) -> list[datetime]:
 
     # Normalize to UTC
     if start.tzinfo is None:
-        start = start.replace(tzinfo=timezone.utc)
+        start = start.replace(tzinfo=UTC)
     else:
-        start = start.astimezone(timezone.utc)
+        start = start.astimezone(UTC)
 
     if end.tzinfo is None:
-        end = end.replace(tzinfo=timezone.utc)
+        end = end.replace(tzinfo=UTC)
     else:
-        end = end.astimezone(timezone.utc)
+        end = end.astimezone(UTC)
 
     # Round down to the hour
     current = start.replace(minute=0, second=0, microsecond=0)
@@ -81,6 +81,7 @@ def generate_hourly_datetimes(start: datetime, end: datetime) -> list[datetime]:
         current += timedelta(hours=1)
 
     return datetimes
+
 
 def format_relative_tick_path(symbol: str, time: datetime) -> str:
     """
@@ -102,11 +103,11 @@ def format_relative_tick_path(symbol: str, time: datetime) -> str:
     Examples:
         >>> format_relative_tick_path('XAUUSD', datetime(2024, 3, 2, 12))
         'XAUUSD/2024/02/02/12h_ticks.bi5'
-        
+
         >>> # January is month 0
         >>> format_relative_tick_path('EURUSD', datetime(2024, 1, 15, 9))
         'EURUSD/2024/00/15/09h_ticks.bi5'
-        
+
         >>> # December is month 11
         >>> format_relative_tick_path('BTCUSD', datetime(2024, 12, 31, 23))
         'BTCUSD/2024/11/31/23h_ticks.bi5'
@@ -114,7 +115,7 @@ def format_relative_tick_path(symbol: str, time: datetime) -> str:
     Note:
         This function does NOT validate that the datetime is rounded to the hour.
         If you need validation, use the TickChunk model which enforces this constraint.
-        
+
         The 0-indexed month convention matches Dukascopy's datafeed structure:
         - January = 00
         - February = 01

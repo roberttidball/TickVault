@@ -54,7 +54,7 @@ async def download_worker(
                 chunk = await asyncio.wait_for(
                     input_queue.get(), timeout=CONFIG.worker_queue_timeout
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning("Download worker timeout - assuming parent crashed")
                 # Timeout - assume parent process crashed or no more work
                 break

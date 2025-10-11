@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from tqdm.asyncio import tqdm
 
@@ -14,7 +14,7 @@ from .metadata_worker import metadata_worker
 async def download_range(
     symbol: str,
     start: datetime,
-    end: datetime = datetime.now(tz=timezone.utc),
+    end: datetime = datetime.now(tz=UTC),
     proxies: list[str] | None = None,
 ) -> None:
     """

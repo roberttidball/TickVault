@@ -1,12 +1,12 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from pydantic import BaseModel, Field, field_validator
 
 from .config import CONFIG
 from .constants import DUKASCOPY_DATA_FEED_BASE
-from .utils import format_relative_tick_path
 from .logger import logger
+from .utils import format_relative_tick_path
 
 
 class TickChunk(BaseModel, frozen=True):
@@ -75,10 +75,10 @@ class TickChunk(BaseModel, frozen=True):
         # Normalize to UTC
         if time.tzinfo is None:
             # Naive datetime - assume UTC
-            return time.replace(tzinfo=timezone.utc)
+            return time.replace(tzinfo=UTC)
         else:
             # Timezone-aware - convert to UTC
-            return time.astimezone(timezone.utc)
+            return time.astimezone(UTC)
 
     @property
     def url(self) -> str:

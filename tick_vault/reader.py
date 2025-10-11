@@ -91,15 +91,13 @@ def read_tick_data(
         logger.warning(
             f"No data available for {symbol} in range {start.date()} to {end.date()}"
         )
-        return pd.DataFrame(
-            columns=["time", "ask", "bid", "ask_volume", "bid_volume"]
-        )
+        return pd.DataFrame(columns=["time", "ask", "bid", "ask_volume", "bid_volume"])
 
     logger.info(f"Decoding {len(chunks)} chunks for {symbol}")
 
     # Decode all chunks and collect rows with progress bar
     all_rows = []
-    
+
     with tqdm(
         total=len(chunks),
         desc=f"Reading {symbol}",
@@ -127,8 +125,7 @@ def read_tick_data(
 
     # Convert to DataFrame
     df = pd.DataFrame(
-        all_rows,
-        columns=["time", "ask", "bid", "ask_volume", "bid_volume"]
+        all_rows, columns=["time", "ask", "bid", "ask_volume", "bid_volume"]
     )
 
     # Ensure time column is datetime type

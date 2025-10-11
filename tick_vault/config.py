@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Self
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -60,7 +60,7 @@ class Config(BaseSettings):
             detailed file logs. Must be >= base_log_level.
             Default: INFO (important messages only)
     """
-    
+
     model_config = SettingsConfigDict(
         env_prefix="TICK_VAULT_",
         env_file=".env",
@@ -125,7 +125,7 @@ class Config(BaseSettings):
     )
 
     @model_validator(mode="after")
-    def validate_timeouts(self) -> "Config":
+    def validate_timeouts(self) -> Self:
         """
         Ensure batch timeout is less than worker queue timeout.
 
@@ -142,7 +142,7 @@ class Config(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def validate_log_levels(self) -> "Config":
+    def validate_log_levels(self) -> Self:
         """
         Ensure console log level is not more verbose than base log level.
 

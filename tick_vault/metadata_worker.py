@@ -69,7 +69,7 @@ async def metadata_worker(
                     db.insert_rows(batch)
                     batch.clear()
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # Timeout - process accumulated batch if any
                 if batch:
                     db.insert_rows(batch)
@@ -90,9 +90,9 @@ async def metadata_worker(
                     # Got a chunk, start new batch
                     batch.append(chunk)
 
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.warning("Metadata worker timeout - assuming parent crashed")
                     # Long timeout - assume parent crashed, exit
                     raise  # To ensure other processes stop, maybe download workers are stuck
-                
+
     logger.debug("Metadata worker shutting down")
