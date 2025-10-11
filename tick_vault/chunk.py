@@ -128,6 +128,7 @@ class TickChunk(BaseModel, frozen=True):
         Raises:
             FileExistsError: If the file already exists on disk
             TypeError: If content is not bytes
+            ValueError: If content is empty
 
         Example:
             >>> chunk = TickChunk(symbol='XAUUSD', time=datetime(2024, 3, 2, 12))
@@ -135,6 +136,9 @@ class TickChunk(BaseModel, frozen=True):
         """
         if not isinstance(content, bytes):
             raise TypeError(f"Content must be bytes, got {type(content).__name__}")
+        
+        if not content:
+            raise ValueError("Got empty content")
 
         file_path = self.path()
 
