@@ -7,6 +7,7 @@ from .download_worker import download_worker
 from .metadata import MetadataDB
 from .metadata_worker import metadata_worker
 from .chunk import TickChunk
+from .config import CONFIG
 
 
 async def download_range(
@@ -14,7 +15,6 @@ async def download_range(
     start: datetime,
     end: datetime,
     proxies: list[str] | None = None,
-    worker_per_proxy: int = 10,
 ) -> None:
     """
     Download tick data for a symbol within a date range using concurrent workers.
@@ -29,7 +29,6 @@ async def download_range(
         end: End datetime of the range (exclusive, rounded down to hour)
         proxies: Optional list of proxy URLs. If None or empty, workers run
             without proxies. Workers are distributed evenly across proxies.
-        worker_per_proxy: Number of concurrent workers per proxy (default: 10)
 
     Raises:
         ForbiddenError: If access is blocked/forbidden during download
@@ -41,8 +40,7 @@ async def download_range(
         ...     symbol='XAUUSD',
         ...     start=datetime(2024, 1, 1),
         ...     end=datetime(2024, 2, 1),
-        ...     proxies=['http://proxy1:8080', 'http://proxy2:8080'],
-        ...     worker_per_proxy=5
+        ...     proxies=['http://127.0.0.1:8080', 'http://127.0.0.1:9090', 'http://proxy2:8080'],
         ... )
     """
     # Handle empty proxies list
@@ -64,12 +62,12 @@ async def download_range(
     print(f"Found {total_chunks} chunks to download for {symbol}")
 
     # Create queues
-    chunk_queue: asyncio.Queue[TickChunk | None] = asyncio.Queue()
-    downloader_result_queue: asyncio.Queue[tuple[TickChunk, bool]] = asyncio.Queue()
-    metadata_queue: asyncio.Queue[tuple[TickChunk, bool] | None] = asyncio.Queue()
+    downloader_input_queue: asyncio.Queue[TickChunk | None] = asyncio.Queue()
+    downloader_output_queue: asyncio.Queue[TickChunk] = asyncio.Queue()
+    metadata_queue: asyncio.Queue[TickChunk | None] = asyncio.Queue()
 
     # Calculate total number of workers (capped by available chunks)
-    max_workers = len(worker_proxies) * worker_per_proxy
+    max_workers = len(worker_proxies) * CONFIG.worker_per_proxy
     actual_workers = min(max_workers, total_chunks)
 
     # Start metadata worker
@@ -79,26 +77,28 @@ async def download_range(
     download_tasks = []
     worker_index = 0
     
-    for proxy in worker_proxies:
-        for _ in range(worker_per_proxy):
+    for _ in range(CONFIG.worker_per_proxy):
+        for proxy in worker_proxies:
             if worker_index >= actual_workers:
                 break
             
             # Create worker task
             task = asyncio.create_task(
-                download_worker(proxy, chunk_queue, downloader_result_queue)
+                download_worker(proxy, downloader_input_queue, downloader_output_queue)
             )
             download_tasks.append(task)
             worker_index += 1
         
         if worker_index >= actual_workers:
             break
+    
+    all_tasks = download_tasks + [metadata_task]
 
     # Populate initial chunks (one per worker to start)
     chunks_remaining = list(chunks_to_download)  # Make a copy
     for _ in range(actual_workers):
         if chunks_remaining:
-            await chunk_queue.put(chunks_remaining.pop(0))
+            await downloader_input_queue.put(chunks_remaining.pop(0))
 
     # Create progress bar
     pbar = tqdm(
@@ -115,11 +115,14 @@ async def download_range(
     try:
         # Process results as they come in
         while completed < total_chunks:
+            # Propagate child errors
+            [t.result() for t in all_tasks if t.done()]
+
             # Get result from download workers
-            chunk, has_data = await downloader_result_queue.get()
+            chunk = await downloader_output_queue.get()
             
             # Forward to metadata worker
-            await metadata_queue.put((chunk, has_data))
+            await metadata_queue.put(chunk)
             
             # Update progress
             completed += 1
@@ -127,7 +130,7 @@ async def download_range(
             
             # Feed next chunk to workers if available
             if chunks_remaining:
-                await chunk_queue.put(chunks_remaining.pop(0))
+                await downloader_input_queue.put(chunks_remaining.pop(0))
 
         pbar.close()
         print(f"✓ Successfully downloaded {total_chunks} chunks for {symbol}")
@@ -141,7 +144,7 @@ async def download_range(
     finally:
         # Send stop signals to all workers
         for _ in range(actual_workers):
-            await chunk_queue.put(None)
+            await downloader_input_queue.put(None)
         
         # Stop metadata worker
         await metadata_queue.put(None)

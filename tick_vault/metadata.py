@@ -80,7 +80,7 @@ class MetadataDB:
         )
         self.conn.commit()
 
-    def insert_row(self, chunk: TickChunk, has_data: bool) -> None:
+    def insert_row(self, chunk: TickChunk) -> None:
         """
         Insert or update a metadata row for a tick chunk.
 
@@ -89,7 +89,6 @@ class MetadataDB:
 
         Args:
             chunk: The TickChunk representing the hour of data
-            has_data: True if data exists for this hour, False otherwise
 
         Example:
             >>> db = MetadataDB()
@@ -105,7 +104,7 @@ class MetadataDB:
             INSERT OR REPLACE INTO {table_name} (timestamp, has_data)
             VALUES (?, ?)
             """,
-            (timestamp, int(has_data)),
+            (timestamp, int(chunk.path().exists())),
         )
         self.conn.commit()
 
