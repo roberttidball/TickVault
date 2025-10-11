@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .chunk import TickChunk
 from .config import CONFIG
+from .logger import logger
 from .utils import generate_hourly_datetimes
 
 
@@ -46,6 +47,7 @@ class MetadataDB:
 
         self.conn = sqlite3.connect(self.db_path)
         self.conn.execute("PRAGMA foreign_keys = ON")
+        logger.debug(f"Initialized metadata database at {self.db_path}")
 
     def _get_table_name(self, symbol: str) -> str:
         """
@@ -69,6 +71,7 @@ class MetadataDB:
         Args:
             symbol: The trading pair symbol
         """
+        logger.debug(f"Ensuring table exists for symbol: {symbol}")
         table_name = self._get_table_name(symbol)
         self.conn.execute(
             f"""
@@ -107,6 +110,10 @@ class MetadataDB:
             if chunk.symbol not in chunks_by_symbol:
                 chunks_by_symbol[chunk.symbol] = []
             chunks_by_symbol[chunk.symbol].append(chunk)
+
+        logger.debug(
+            f"Inserting {len(chunks)} rows across {len(chunks_by_symbol)} symbols"
+        )
 
         # Insert all chunks for each symbol in a single transaction
         for symbol, symbol_chunks in chunks_by_symbol.items():
@@ -177,6 +184,10 @@ class MetadataDB:
             if int(dt.timestamp()) not in existing_timestamps
         ]
 
+        logger.debug(
+            f"Found {len(not_attempted)} not-attempted chunks for {symbol} from {start.date()} to {end.date()}"
+        )
+
         return not_attempted
 
     def check_for_gaps(self, symbol: str) -> None:
@@ -212,6 +223,7 @@ class MetadataDB:
 
         result = cursor.fetchone()
         if result[0] is None:
+            logger.warning(f"No data found for symbol: {symbol}")
             raise ValueError(f"No data found for symbol: {symbol}")
 
         min_timestamp, max_timestamp, count = result
@@ -245,6 +257,9 @@ class MetadataDB:
                 datetime.fromtimestamp(ts).isoformat()
                 for ts in sorted(missing_timestamps)
             ]
+            logger.error(
+                f"Data gaps detected for {symbol}: {len(missing_timestamps)} missing hours"
+            )
 
             raise RuntimeError(
                 f"Data gaps found for symbol {symbol}. "
@@ -301,11 +316,14 @@ class MetadataDB:
             for row in cursor.fetchall()
         ]
 
+        logger.debug(f"Retrieved {len(available_chunks)} available chunks for {symbol}")
+
         return available_chunks
 
     def close(self) -> None:
         """Close the database connection."""
         self.conn.close()
+        logger.debug("Closed metadata database connection")
 
     def __enter__(self) -> "MetadataDB":
         """Context manager entry."""

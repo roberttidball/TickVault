@@ -7,6 +7,7 @@ from httpx import AsyncClient
 from .chunk import TickChunk
 from .config import CONFIG
 from .fetcher import fetch_with_retry
+from .logger import logger
 
 
 async def download_worker(
@@ -45,6 +46,7 @@ async def download_worker(
         6. Put chunk to output_queue
         7. Any errors are raised immediately to stop the download process
     """
+    logger.debug(f"Download worker started with proxy: {proxy}")
     async with AsyncClient(proxy=proxy) as client:
         while True:
             try:
@@ -53,11 +55,13 @@ async def download_worker(
                     input_queue.get(), timeout=CONFIG.worker_queue_timeout
                 )
             except asyncio.TimeoutError:
+                logger.warning("Download worker timeout - assuming parent crashed")
                 # Timeout - assume parent process crashed or no more work
                 break
 
             # None is the sentinel value to stop the worker
             if chunk is None:
+                logger.debug("Download worker received stop signal")
                 break
 
             # Fetch data with automatic retry logic
@@ -67,5 +71,14 @@ async def download_worker(
             if content is not None:
                 # Data exists - save to disk
                 chunk.save(content)
+                logger.debug(
+                    f"Downloaded and saved chunk: {chunk.symbol} {chunk.time.isoformat()}"
+                )
+            else:
+                logger.debug(
+                    f"No data exists for chunk: {chunk.symbol} {chunk.time.isoformat()}"
+                )
 
             await output_queue.put(chunk)
+
+    logger.debug("Download worker shutting down")

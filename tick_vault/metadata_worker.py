@@ -4,6 +4,7 @@ import asyncio
 
 from .chunk import TickChunk
 from .config import CONFIG
+from .logger import logger
 from .metadata import MetadataDB
 
 
@@ -38,6 +39,8 @@ async def metadata_worker(
         4. On shutdown signal (None), flush any remaining chunks
         5. Close database connection on exit
     """
+    logger.debug("Metadata worker started")
+
     with MetadataDB(db_path) as db:
         batch: list[TickChunk] = []
 
@@ -50,12 +53,15 @@ async def metadata_worker(
 
                 # None is the sentinel value to stop the worker
                 if chunk is None:
+                    logger.debug("Metadata worker received stop signal")
                     # Process any remaining chunks in batch
                     if batch:
+                        logger.debug(f"Final batch flush: {len(batch)} chunks")
                         db.insert_rows(batch)
                     break
 
                 # Add to batch
+                logger.debug(f"Flushing batch of {len(batch)} chunks to database")
                 batch.append(chunk)
 
                 # Process batch if it reaches target size
@@ -85,5 +91,8 @@ async def metadata_worker(
                     batch.append(chunk)
 
                 except asyncio.TimeoutError:
+                    logger.warning("Metadata worker timeout - assuming parent crashed")
                     # Long timeout - assume parent crashed, exit
-                    raise # To ensure other processes stop, maybe download workers are stuck
+                    raise  # To ensure other processes stop, maybe download workers are stuck
+                
+    logger.debug("Metadata worker shutting down")

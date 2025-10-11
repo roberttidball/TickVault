@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 from .config import CONFIG
 from .constants import DUKASCOPY_DATA_FEED_BASE
 from .utils import format_relative_tick_path
+from .logger import logger
 
 
 class TickChunk(BaseModel, frozen=True):
@@ -156,6 +157,7 @@ class TickChunk(BaseModel, frozen=True):
             raise ValueError("Got empty content")
 
         file_path = self.path()
+        logger.debug(f"Saving chunk to {file_path}")
 
         # Create parent directories if they don't exist
         file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -180,6 +182,7 @@ class TickChunk(BaseModel, frozen=True):
             True
         """
         file_path = self.path()
+        logger.debug(f"Loading chunk from {file_path}")
 
         if not file_path.exists():
             raise FileNotFoundError(

@@ -12,6 +12,7 @@ from httpx import (
 )
 
 from .config import CONFIG
+from .logger import logger
 
 
 # Custom exceptions for different error categories
@@ -58,6 +59,9 @@ async def _fetch(client: AsyncClient, url: str) -> bytes | None:
 
         # Success case with data
         if response.status_code == 200:
+            logger.debug(
+                f"Successfully fetched {len(response.content)} bytes from {url}"
+            )
             if response.content:
                 return response.content
             else:
@@ -66,6 +70,7 @@ async def _fetch(client: AsyncClient, url: str) -> bytes | None:
 
         # Resource not found - legitimate "no data" case
         elif response.status_code == 404:
+            logger.debug(f"No data found (404) for URL: {url}")
             return None
 
         # Rate limiting
@@ -74,12 +79,16 @@ async def _fetch(client: AsyncClient, url: str) -> bytes | None:
             retry_seconds = (
                 int(retry_after) if retry_after and retry_after.isdigit() else None
             )
+            logger.warning(
+                f"Rate limited (429) for {url}, retry_after={retry_seconds}s"
+            )
             raise RateLimitError(
                 f"Rate limited (429) for URL: {url}", retry_after=retry_seconds
             )
 
         # Forbidden/blocked access
         elif response.status_code in (401, 403, 451):
+            logger.error(f"Access forbidden ({response.status_code}) for {url}")
             raise ForbiddenError(
                 f"Access forbidden (status {response.status_code}) for URL: {url}. "
                 "Possible IP ban or authentication issue."
@@ -89,6 +98,9 @@ async def _fetch(client: AsyncClient, url: str) -> bytes | None:
         elif response.status_code == 503:
             # 503 can be rate limiting or temporary unavailability
             retry_after = response.headers.get("Retry-After")
+            logger.warning(
+                f"Service unavailable (503) for {url}, retry_after={retry_after}"
+            )
             if retry_after:
                 retry_seconds = int(retry_after) if retry_after.isdigit() else None
                 raise RateLimitError(
@@ -102,6 +114,9 @@ async def _fetch(client: AsyncClient, url: str) -> bytes | None:
 
         # Other server errors (500, 502, 504) - potentially retryable
         elif 500 <= response.status_code < 600:
+            logger.warning(
+                f"Server error ({response.status_code}) for {url}, will retry"
+            )
             raise RetryableError(
                 f"Server error (status {response.status_code}) for URL: {url}"
             )
@@ -120,14 +135,17 @@ async def _fetch(client: AsyncClient, url: str) -> bytes | None:
 
     # Network timeouts (includes ConnectTimeout, ReadTimeout, WriteTimeout, PoolTimeout)
     except TimeoutException as e:
+        logger.warning(f"Timeout while fetching {url}")
         raise RetryableError(f"Request timeout for URL: {url}") from e
 
     # Connection errors and DNS failures - retryable
     except ConnectError as e:
+        logger.warning(f"Network error for {url}: {type(e).__name__}")
         raise RetryableError(f"Connection error for URL: {url}") from e
 
     # Other network-level errors - retryable
     except NetworkError as e:
+        logger.warning(f"Network error for {url}: {type(e).__name__}")
         raise RetryableError(f"Network error for URL: {url}") from e
 
     # Protocol errors - unexpected
@@ -175,6 +193,8 @@ async def fetch_with_retry(client: AsyncClient, url: str) -> bytes | None:
         - Max attempts: CONFIG.fetch_max_retry_attempts + 1 (initial + retries)
         - Backoff formula: base_delay * (2 ** attempt)
     """
+    logger.debug(f"Fetching URL: {url}")
+
     for attempt in range(CONFIG.fetch_max_retry_attempts + 1):
         try:
             return await _fetch(client, url)
@@ -191,6 +211,9 @@ async def fetch_with_retry(client: AsyncClient, url: str) -> bytes | None:
                 if e.retry_after
                 else CONFIG.fetch_base_retry_delay * (2**attempt)
             )
+            logger.info(
+                f"Rate limit hit, retrying in {delay:.1f}s (attempt {attempt + 1}/{CONFIG.fetch_max_retry_attempts + 1})"
+            )
             await asyncio.sleep(delay)
             continue
 
@@ -202,8 +225,12 @@ async def fetch_with_retry(client: AsyncClient, url: str) -> bytes | None:
 
             # Exponential backoff
             delay = CONFIG.fetch_base_retry_delay * (2**attempt)
+            logger.info(
+                f"Retryable error, backing off {delay:.1f}s (attempt {attempt + 1}/{CONFIG.fetch_max_retry_attempts + 1})"
+            )
             await asyncio.sleep(delay)
             continue
 
     # Should never reach here, but for type safety
+    logger.error(f"Max retries exhausted for {url}")
     raise RuntimeError(f"Unexpected code path for URL: {url}")
