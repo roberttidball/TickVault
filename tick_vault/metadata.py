@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from .config import CONFIG
-from .models import TickChunk
+from .chunk import TickChunk
 from .utils import generate_hourly_datetimes
 
 

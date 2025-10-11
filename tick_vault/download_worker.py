@@ -5,7 +5,7 @@ import asyncio
 from httpx import AsyncClient
 
 from .fetcher import fetch_with_retry
-from .models import TickChunk
+from .chunk import TickChunk
 
 
 async def download_worker(

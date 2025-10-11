@@ -6,7 +6,7 @@ from tqdm.asyncio import tqdm
 from .download_worker import download_worker
 from .metadata import MetadataDB
 from .metadata_worker import metadata_worker
-from .models import TickChunk
+from .chunk import TickChunk
 
 
 async def download_range(

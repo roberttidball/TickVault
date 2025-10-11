@@ -3,7 +3,7 @@
 import asyncio
 
 from .metadata import MetadataDB
-from .models import TickChunk
+from .chunk import TickChunk
 
 
 async def metadata_worker(
