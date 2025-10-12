@@ -1,7 +1,7 @@
 """Metadata database module for managing tick data download status."""
 
 import sqlite3
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .chunk import TickChunk
@@ -64,6 +64,7 @@ class MetadataDB:
         clean_symbol = "".join(c if c.isalnum() else "_" for c in symbol)
         return f"symbol_{clean_symbol}"
 
+    # ====================== Internal API ============================
     def _ensure_table_exists(self, symbol: str) -> None:
         """
         Create a table for the symbol if it doesn't exist.
@@ -83,6 +84,7 @@ class MetadataDB:
         )
         self.conn.commit()
 
+    # ====================== Download API ============================
     def insert_rows(self, chunks: list[TickChunk]) -> None:
         """
         Insert or update multiple metadata rows in a single transaction.
@@ -190,64 +192,158 @@ class MetadataDB:
 
         return not_attempted
 
-    def check_for_gaps(self, symbol: str) -> None:
+    # ======================== Read API ==============================
+    def first_chunk(self, symbol: str) -> TickChunk | None:
         """
-        Verify data continuity by checking for gaps in downloaded data.
-
-        Finds the first and last entries for the symbol and ensures all hours
-        between them exist in the database. Raises an error if any gaps are found.
-
-        This should be called before reading data to ensure consistency.
+        Get the first (earliest) chunk in the database for a symbol.
 
         Args:
             symbol: The trading pair symbol
 
-        Raises:
-            RuntimeError: If gaps are found in the data
-            ValueError: If no data exists for the symbol
+        Returns:
+            TickChunk | None: The earliest chunk if data exists, None otherwise
 
         Example:
             >>> db = MetadataDB()
-            >>> db.check_for_gaps('XAUUSD')  # Raises if gaps exist
+            >>> first = db.first_chunk('XAUUSD')
+            >>> if first:I
+            ...     print(f"First chunk: {first.time}")
         """
         self._ensure_table_exists(symbol)
         table_name = self._get_table_name(symbol)
 
-        # Get first and last timestamps
         cursor = self.conn.execute(
             f"""
-            SELECT MIN(timestamp), MAX(timestamp), COUNT(*)
+            SELECT MIN(timestamp)
             FROM {table_name}
             """
         )
 
         result = cursor.fetchone()
-        if result[0] is None:
-            logger.warning(f"No data found for symbol: {symbol}")
-            raise ValueError(f"No data found for symbol: {symbol}")
+        min_timestamp = result[0]
 
-        min_timestamp, max_timestamp, count = result
+        if min_timestamp is None:
+            logger.debug(f"No data found for symbol: {symbol}")
+            return None
 
-        # Calculate expected number of hours
-        first_dt = datetime.fromtimestamp(min_timestamp, tz=UTC)
-        last_dt = datetime.fromtimestamp(max_timestamp, tz=UTC)
+        first_time = datetime.fromtimestamp(min_timestamp, tz=UTC)
+        logger.debug(f"First chunk for {symbol}: {first_time.isoformat()}")
 
-        # Generate all expected hours
-        expected_hours = generate_hourly_datetimes(
-            first_dt, last_dt + timedelta(hours=1)
+        return TickChunk(symbol=symbol, time=first_time)
+
+    def last_chunk(self, symbol: str) -> TickChunk | None:
+        """
+        Get the last (most recent) chunk in the database for a symbol.
+
+        Args:
+            symbol: The trading pair symbol
+
+        Returns:
+            TickChunk | None: The most recent chunk if data exists, None otherwise
+
+        Example:
+            >>> db = MetadataDB()
+            >>> last = db.last_chunk('XAUUSD')
+            >>> if last:
+            ...     print(f"Last chunk: {last.time}")
+        """
+        self._ensure_table_exists(symbol)
+        table_name = self._get_table_name(symbol)
+
+        cursor = self.conn.execute(
+            f"""
+            SELECT MAX(timestamp)
+            FROM {table_name}
+            """
         )
+
+        result = cursor.fetchone()
+        max_timestamp = result[0]
+
+        if max_timestamp is None:
+            logger.debug(f"No data found for symbol: {symbol}")
+            return None
+
+        last_time = datetime.fromtimestamp(max_timestamp, tz=UTC)
+        logger.debug(f"Last chunk for {symbol}: {last_time.isoformat()}")
+
+        return TickChunk(symbol=symbol, time=last_time)
+
+    def check_for_gaps(self, symbol: str, start: datetime, end: datetime) -> None:
+        """
+        Verify data continuity by checking for gaps in downloaded data within a time range.
+
+        Checks that all hours between start and end exist in the database with no gaps.
+        This should be called before reading data to ensure consistency.
+
+        Args:
+            symbol: The trading pair symbol
+            start: Start datetime of the range (inclusive, rounded down to hour)
+            end: End datetime of the range (exclusive, rounded down to hour)
+
+        Raises:
+            RuntimeError: If gaps are found in the data within the specified range
+            ValueError: If no data exists for the symbol in the specified range
+
+        Example:
+            >>> db = MetadataDB()
+            >>> start = datetime(2024, 3, 1, 0)
+            >>> end = datetime(2024, 3, 2, 0)
+            >>> db.check_for_gaps('XAUUSD', start, end)  # Raises if gaps exist
+        """
+        self._ensure_table_exists(symbol)
+        table_name = self._get_table_name(symbol)
+
+        # Round to hours and normalize to UTC
+        start_hour = start.replace(minute=0, second=0, microsecond=0)
+        if start_hour.tzinfo is None:
+            start_hour = start_hour.replace(tzinfo=UTC)
+        else:
+            start_hour = start_hour.astimezone(UTC)
+
+        end_hour = end.replace(minute=0, second=0, microsecond=0)
+        if end_hour.tzinfo is None:
+            end_hour = end_hour.replace(tzinfo=UTC)
+        else:
+            end_hour = end_hour.astimezone(UTC)
+
+        start_timestamp = int(start_hour.timestamp())
+        end_timestamp = int(end_hour.timestamp())
+
+        # Get count of entries in the specified range
+        cursor = self.conn.execute(
+            f"""
+            SELECT COUNT(*)
+            FROM {table_name}
+            WHERE timestamp >= ? AND timestamp < ?
+            """,
+            (start_timestamp, end_timestamp),
+        )
+
+        actual_count = cursor.fetchone()[0]
+
+        if actual_count == 0:
+            logger.warning(
+                f"No data found for symbol {symbol} in range {start_hour.date()} to {end_hour.date()}"
+            )
+            raise ValueError(
+                f"No data found for symbol {symbol} in range {start_hour.date()} to {end_hour.date()}"
+            )
+
+        # Generate all expected hours in the range
+        expected_hours = generate_hourly_datetimes(start_hour, end_hour)
         expected_count = len(expected_hours)
 
-        if count != expected_count:
+        if actual_count != expected_count:
             # Find the actual gaps
             expected_timestamps = {int(dt.timestamp()) for dt in expected_hours}
 
             cursor = self.conn.execute(
                 f"""
                 SELECT timestamp FROM {table_name}
-                WHERE timestamp >= ? AND timestamp <= ?
+                WHERE timestamp >= ? AND timestamp < ?
                 """,
-                (min_timestamp, max_timestamp),
+                (start_timestamp, end_timestamp),
             )
 
             existing_timestamps = {row[0] for row in cursor.fetchall()}
@@ -257,16 +353,23 @@ class MetadataDB:
                 datetime.fromtimestamp(ts, tz=UTC).isoformat()
                 for ts in sorted(missing_timestamps)
             ]
+
             logger.error(
-                f"Data gaps detected for {symbol}: {len(missing_timestamps)} missing hours"
+                f"Data gaps detected for {symbol} in range {start_hour.date()} to {end_hour.date()}: "
+                f"{len(missing_timestamps)} missing hours"
             )
 
             raise RuntimeError(
-                f"Data gaps found for symbol {symbol}. "
-                f"Expected {expected_count} entries but found {count}. "
+                f"Data gaps found for symbol {symbol} in range {start_hour.date()} to {end_hour.date()}. "
+                f"Expected {expected_count} entries but found {actual_count}. "
                 f"Missing timestamps: {missing_dates[:10]}"
                 + (" ..." if len(missing_dates) > 10 else "")
             )
+
+        logger.debug(
+            f"No gaps found for {symbol} in range {start_hour.date()} to {end_hour.date()} "
+            f"({expected_count} hours verified)"
+        )
 
     def get_available_chunks(
         self, symbol: str, start: datetime, end: datetime
@@ -320,6 +423,7 @@ class MetadataDB:
 
         return available_chunks
 
+    # ======================= General API ============================
     def close(self) -> None:
         """Close the database connection."""
         self.conn.close()

@@ -1,25 +1,17 @@
 """Decoder module for reading and decoding tick data chunks."""
 
 import lzma
-import struct
-from datetime import datetime, timedelta
-from typing import TypeAlias
+
+import numpy as np
 
 from .chunk import TickChunk
-from .constants import LZMA_FORMAT_STRING, PIPET_SIZE_REGISTRY, RAW_DATA_TOKEN_SIZE
+from .constants import PIPET_SIZE_REGISTRY
 from .logger import logger
 
-# Type alias for a single tick row
-RowType: TypeAlias = tuple[datetime, float, float, int, int]
 
-
-def decode_chunk(chunk: TickChunk, pipet_scale: float | None = None) -> list[RowType]:
+def decode_chunk(chunk: TickChunk, pipet_scale: float | None = None) -> np.ndarray:
     """
-    Decode a single tick data chunk from compressed binary format.
-
-    Decompresses the LZMA-compressed data and unpacks each tick into a tuple
-    containing timestamp, ask/bid prices, and volumes. The timestamp is calculated
-    by adding the delta milliseconds to the chunk's base hour.
+    Decode a single tick data chunk into a structured numpy array.
 
     Args:
         chunk: The TickChunk to decode
@@ -27,43 +19,18 @@ def decode_chunk(chunk: TickChunk, pipet_scale: float | None = None) -> list[Row
             PIPET_SIZE_REGISTRY for the chunk's symbol.
 
     Returns:
-        list[RowType]: List of tuples, each containing:
-            - datetime: Tick timestamp (chunk.time + delta milliseconds)
-            - float: Ask price (scaled)
-            - float: Bid price (scaled)
-            - int: Ask volume (scaled and rounded)
-            - int: Bid volume (scaled and rounded)
+        np.ndarray: Structured array with fields:
+            - time: datetime64[ms] - Tick timestamps
+            - ask: float64 - Ask prices (scaled)
+            - bid: float64 - Bid prices (scaled)
+            - ask_volume: int64 - Ask volumes (scaled)
+            - bid_volume: int64 - Bid volumes (scaled)
 
     Raises:
         FileNotFoundError: If the chunk file doesn't exist on disk
         ValueError: If pipet_scale is None and symbol not in PIPET_SIZE_REGISTRY
         lzma.LZMAError: If decompression fails
-        struct.error: If binary data format is invalid
-
-    Example:
-        >>> chunk = TickChunk(symbol='XAUUSD', time=datetime(2024, 3, 2, 12))
-        >>> ticks = decode_chunk(chunk)
-        >>> len(ticks) > 0
-        True
-        >>> isinstance(ticks[0][0], datetime)
-        True
     """
-    # Load and decompress the chunk data
-    compressed_bytes = chunk.load()
-    try:
-        decompressed_bytes = lzma.decompress(compressed_bytes)
-    except lzma.LZMAError as e:
-        logger.error(f"Failed to decompress chunk {chunk.symbol} at {chunk.time}: {e}")
-        raise
-
-    # Calculate number of ticks in the chunk
-    num_ticks = len(decompressed_bytes) // RAW_DATA_TOKEN_SIZE
-
-    if len(decompressed_bytes) % RAW_DATA_TOKEN_SIZE != 0:
-        logger.warning(
-            f"Chunk {chunk.symbol} at {chunk.time} has incomplete data: "
-            f"{len(decompressed_bytes)} bytes not divisible by {RAW_DATA_TOKEN_SIZE}"
-        )
 
     # Get pipet scale for price conversion
     if pipet_scale is None:
@@ -74,38 +41,52 @@ def decode_chunk(chunk: TickChunk, pipet_scale: float | None = None) -> list[Row
             )
         pipet_scale = PIPET_SIZE_REGISTRY[chunk.symbol]
 
-    logger.debug(
-        f"Decoding {num_ticks} ticks from chunk {chunk.symbol} at {chunk.time}"
+    # Load and decompress the chunk data
+    try:
+        buffer = lzma.decompress(chunk.load())
+    except lzma.LZMAError as e:
+        logger.error(f"Failed to decompress chunk {chunk.symbol} at {chunk.time}: {e}")
+        raise
+
+    raw_data = np.frombuffer(
+        buffer,
+        dtype=np.dtype(
+            [
+                ("time", ">u4"),
+                ("ask", ">u4"),
+                ("bid", ">u4"),
+                ("ask_volume", ">f4"),
+                ("bid_volume", ">f4"),
+            ]
+        ),
+    )
+    result = np.empty(
+        len(raw_data),
+        dtype=np.dtype(
+            [
+                ("time", "datetime64[ms]"),
+                ("ask", "float64"),
+                ("bid", "float64"),
+                ("ask_volume", "int64"),
+                ("bid_volume", "int64"),
+            ]
+        ),
     )
 
-    # Decode each tick
-    data: list[RowType] = []
-    for i in range(num_ticks):
-        # Extract raw bytes for this tick
-        row_bytes = decompressed_bytes[
-            i * RAW_DATA_TOKEN_SIZE : (i + 1) * RAW_DATA_TOKEN_SIZE
-        ]
+    # Time:
+    start = np.datetime64(chunk.time.replace(tzinfo=None), "ms")
+    result["time"] = start + raw_data["time"].astype(np.int64).astype("timedelta64[ms]")
 
-        # Unpack binary data
-        try:
-            delta_ms, ask, bid, ask_volume, bid_volume = struct.unpack(
-                LZMA_FORMAT_STRING, row_bytes
-            )
-        except struct.error as e:
-            logger.error(
-                f"Failed to unpack tick {i} from chunk {chunk.symbol} at {chunk.time}: {e}"
-            )
-            raise
+    # Prices:
+    result["ask"] = raw_data["ask"].astype(np.float64) * pipet_scale
+    result["bid"] = raw_data["bid"].astype(np.float64) * pipet_scale
 
-        # Convert to final format
-        tick_time = chunk.time + timedelta(milliseconds=delta_ms)
-        scaled_ask = ask * pipet_scale
-        scaled_bid = bid * pipet_scale
-        scaled_ask_volume = int(round(ask_volume * 1e6))
-        scaled_bid_volume = int(round(bid_volume * 1e6))
+    # Volumes:
+    result["ask_volume"] = np.round(
+        raw_data["ask_volume"].astype(np.float64) * 1e6
+    ).astype(np.int64)
+    result["bid_volume"] = np.round(
+        raw_data["bid_volume"].astype(np.float64) * 1e6
+    ).astype(np.int64)
 
-        data.append(
-            (tick_time, scaled_ask, scaled_bid, scaled_ask_volume, scaled_bid_volume)
-        )
-
-    return data
+    return result

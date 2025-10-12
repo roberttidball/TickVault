@@ -1,8 +1,5 @@
 DUKASCOPY_DATA_FEED_BASE = "https://datafeed.dukascopy.com/datafeed/"
 
-LZMA_FORMAT_STRING = "!IIIff"
-
-RAW_DATA_TOKEN_SIZE = 20
 
 PIPET_SIZE_REGISTRY: dict[str, float] = {
     # Majors: ------
