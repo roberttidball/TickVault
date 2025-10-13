@@ -257,23 +257,28 @@ tick_vault_data/
 
 ```
 TickVault/
+├── .gitignore
 ├── pyproject.toml
 ├── requirements.txt
 ├── README.md
+├── CHANGELOG.md
 ├── LICENSE
+├── MANIFEST.in
 └── tick_vault/
-    ├── __init__.py           # exports: download_range, read_tick_data, reload_config
-    ├── constants.py          # base URL, pipette scales
+    ├── __init__.py           # Public API: download_range, read_tick_data, reload_config
+    ├── py.typed              # Type hints marker for mypy
+    ├── constants.py          # Base URL, pipette scales
     ├── config.py             # Pydantic settings + computed paths
-    ├── logger.py             # centralized logging (console + file)
-    ├── utils.py              # date/hour generators, path formatting (0-index month)
+    ├── logger.py             # Centralized logging (console + file)
+    ├── utils.py              # Date/hour generators, path formatting (0-index month)
     ├── chunk.py              # TickChunk model (url/path/save/load)
     ├── fetcher.py            # HTTP fetch with strong error taxonomy + retry
-    ├── download_worker.py    # async worker: get → save → emit
+    ├── download_worker.py    # Async worker: get → save → emit
     ├── metadata.py           # SQLite DB: tracking, gap checks, available hours
-    ├── metadata_worker.py    # single writer, batched inserts
+    ├── metadata_worker.py    # Single writer, batched inserts
     ├── decoder.py            # LZMA decode → structured NumPy
-    └── reader.py             # orchestrates decoding → pandas DataFrame
+    ├── downloader.py         # Download orchestrator
+    └── reader.py             # Orchestrates decoding → pandas DataFrame
 ```
 
 ---
