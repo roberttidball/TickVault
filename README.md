@@ -4,7 +4,7 @@
 
 **A high-performance Python library for downloading, storing, and accessing financial tick data from Dukascopy Bank's historical datafeed. Built for quantitative researchers and algorithmic traders who need reliable access to high-resolution market data.**
 
-[![Python 3.14](https://img.shields.io/badge/python-3.14-blue.svg)](https://www.python.org/downloads/) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT) [![Code Style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Python 3.14](https://img.shields.io/badge/python-3.14-blue.svg)](https://www.python.org/downloads/) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT) [![Code Style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black) [![PyPI version](https://img.shields.io/pypi/v/tick-vault.svg)](https://pypi.org/project/tick-vault/)
 
 </div>
 
@@ -58,6 +58,10 @@ All dukascopy assets are supported for downloading. Since price scales differ be
 ## 🚀 Quick Start
 
 ### Installation
+```bash
+pip install tick-vault
+```
+Or install from source:
 
 1) Clone the repo:
 ```bash
