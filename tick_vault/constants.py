@@ -1,5 +1,5 @@
 DUKASCOPY_DATA_FEED_BASE = "https://datafeed.dukascopy.com/datafeed/"
-FXMACRODATA_API_BASE = "https://fxmacrodata.com/api/v1"
+FXMACRODATA_API_BASE = "https://api.fxmacrodata.com/v1"
 
 
 PIPET_SIZE_REGISTRY: dict[str, float] = {
