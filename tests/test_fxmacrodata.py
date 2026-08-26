@@ -41,7 +41,7 @@ async def test_fetch_fxmacrodata_daily_builds_request_and_frame() -> None:
         client=client,
     )
 
-    assert client.url == "https://fxmacrodata.com/api/v1/forex/eur/usd"
+    assert client.url == "https://api.fxmacrodata.com/v1/forex/eur/usd"
     assert client.params == {
         "start_date": "2026-01-01",
         "end_date": "2026-01-04",
