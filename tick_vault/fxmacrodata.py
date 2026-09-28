@@ -69,13 +69,13 @@ async def fetch_fxmacrodata_daily(
         client = AsyncClient(timeout=30.0)
 
     params = {"start_date": _format_date(start), "end_date": _format_date(end)}
-    if api_key:
-        params["api_key"] = api_key
+    headers = {"X-API-Key": api_key} if api_key else {}
 
     try:
         response = await client.get(
             f"{base_url.rstrip('/')}/forex/{base.lower()}/{quote.lower()}",
             params=params,
+            headers=headers,
         )
         response.raise_for_status()
         return _daily_rows_to_frame(response.json().get("data", []))

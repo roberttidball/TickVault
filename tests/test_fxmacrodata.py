@@ -22,10 +22,12 @@ class _FakeClient:
     def __init__(self) -> None:
         self.url = ""
         self.params = {}
+        self.headers = {}
 
-    async def get(self, url: str, params: dict) -> _FakeResponse:
+    async def get(self, url: str, params: dict, headers: dict) -> _FakeResponse:
         self.url = url
         self.params = params
+        self.headers = headers
         return _FakeResponse()
 
 
@@ -45,6 +47,15 @@ async def test_fetch_fxmacrodata_daily_builds_request_and_frame() -> None:
     assert client.params == {
         "start_date": "2026-01-01",
         "end_date": "2026-01-04",
-        "api_key": "test-key",
     }
+    assert client.headers == {"X-API-Key": "test-key"}
     assert data["value"].tolist() == [1.10, 1.11]
+
+
+@pytest.mark.asyncio
+async def test_fetch_fxmacrodata_daily_omits_key_header_without_key() -> None:
+    client = _FakeClient()
+
+    await fetch_fxmacrodata_daily("EURUSD", "2026-01-01", "2026-01-04", client=client)
+
+    assert client.headers == {}
