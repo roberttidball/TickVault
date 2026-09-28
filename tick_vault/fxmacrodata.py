@@ -69,7 +69,7 @@ async def fetch_fxmacrodata_daily(
         client = AsyncClient(timeout=30.0)
 
     url = f"{base_url.rstrip('/')}/forex/{base.lower()}/{quote.lower()}"
-    params = {
+    params: dict[str, str | int] = {
         "start_date": _format_date(start),
         "end_date": _format_date(end),
         "limit": 100,
