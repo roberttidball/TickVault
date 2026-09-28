@@ -56,7 +56,7 @@ async def fetch_fxmacrodata_daily(
         symbol: Currency pair such as ``"EURUSD"`` or ``"EUR/USD"``.
         start: Start date in ``YYYY-MM-DD`` form, or a date/datetime object.
         end: End date in ``YYYY-MM-DD`` form, or a date/datetime object.
-        api_key: Optional FXMacroData Professional API key.
+        api_key: FXMacroData API key; forex data requires one.
         client: Optional ``httpx.AsyncClient`` to reuse connection pools.
         base_url: FXMacroData REST API base URL.
 
@@ -68,17 +68,30 @@ async def fetch_fxmacrodata_daily(
     if client is None:
         client = AsyncClient(timeout=30.0)
 
-    params = {"start_date": _format_date(start), "end_date": _format_date(end)}
+    url = f"{base_url.rstrip('/')}/forex/{base.lower()}/{quote.lower()}"
+    params = {
+        "start_date": _format_date(start),
+        "end_date": _format_date(end),
+        "limit": 100,
+        "offset": 0,
+    }
     headers = {"X-API-Key": api_key} if api_key else {}
 
     try:
-        response = await client.get(
-            f"{base_url.rstrip('/')}/forex/{base.lower()}/{quote.lower()}",
-            params=params,
-            headers=headers,
-        )
-        response.raise_for_status()
-        return _daily_rows_to_frame(response.json().get("data", []))
+        # The API returns at most 100 rows per request, so follow the offsets
+        # until the whole window has been read.
+        rows: list[dict] = []
+        while True:
+            response = await client.get(url, params=params, headers=headers)
+            response.raise_for_status()
+            payload = response.json()
+            page = payload.get("data", [])
+            rows.extend(page)
+            pagination = payload.get("pagination") or {}
+            if not page or not pagination.get("has_more"):
+                break
+            params["offset"] = pagination.get("next_offset") or len(rows)
+        return _daily_rows_to_frame(rows)
     finally:
         if close_client:
             await client.aclose()

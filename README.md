@@ -160,7 +160,7 @@ daily_ref = await fetch_fxmacrodata_daily(
     symbol="EURUSD",
     start="2024-01-01",
     end="2024-02-01",
-    api_key="YOUR_FXMACRODATA_KEY",  # optional for public windows
+    api_key="YOUR_FXMACRODATA_KEY",  # forex data requires a key
 )
 
 print(daily_ref.head())
