@@ -26,6 +26,25 @@ def _format_date(value: date | datetime | str) -> str:
     return value
 
 
+def _clean_api_key(api_key: str | None) -> str:
+    key = (api_key or "").strip()
+    if any(ch.isspace() or not ch.isprintable() for ch in key):
+        # Never echo the key itself in the error.
+        raise ValueError(
+            "FXMacroData API key contains whitespace or control characters"
+        )
+    return key
+
+
+def _page_rows(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, dict) and "detail" in payload and "data" not in payload:
+        raise ValueError(f"FXMacroData request failed: {payload['detail']}")
+    page = payload.get("data", []) if isinstance(payload, dict) else None
+    if not isinstance(page, list):
+        raise ValueError("FXMacroData returned an unexpected response shape")
+    return page
+
+
 def _daily_rows_to_frame(rows: list[dict[str, Any]]) -> pd.DataFrame:
     if not rows:
         return pd.DataFrame(columns=["date", "value"])
@@ -64,6 +83,7 @@ async def fetch_fxmacrodata_daily(
         A pandas DataFrame with ``date`` and ``value`` columns.
     """
     base, quote = _split_pair(symbol)
+    api_key = _clean_api_key(api_key)
     close_client = client is None
     if client is None:
         client = AsyncClient(timeout=30.0)
@@ -85,7 +105,7 @@ async def fetch_fxmacrodata_daily(
             response = await client.get(url, params=params, headers=headers)
             response.raise_for_status()
             payload = response.json()
-            page = payload.get("data", [])
+            page = _page_rows(payload)
             rows.extend(page)
             pagination = payload.get("pagination") or {}
             if not page or not pagination.get("has_more"):

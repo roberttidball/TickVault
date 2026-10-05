@@ -106,3 +106,38 @@ async def test_fetch_fxmacrodata_daily_reads_every_page() -> None:
     assert client.offsets == [0, 100, 200]
     assert len(data) == 250
     assert data["date"].is_monotonic_increasing
+
+
+@pytest.mark.asyncio
+async def test_fetch_fxmacrodata_daily_strips_and_rejects_bad_keys() -> None:
+    client = _FakeClient()
+
+    await fetch_fxmacrodata_daily(
+        "EURUSD", "2026-01-01", "2026-01-04", api_key=" test-key\n", client=client
+    )
+    assert client.headers == {"X-API-Key": "test-key"}
+
+    with pytest.raises(ValueError) as excinfo:
+        await fetch_fxmacrodata_daily(
+            "EURUSD",
+            "2026-01-01",
+            "2026-01-04",
+            api_key="test-key\r\nX-Other: 1",
+            client=_FakeClient(),
+        )
+    assert "test-key" not in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload", [{"detail": "Not Found"}, [], {"data": {}}])
+async def test_fetch_fxmacrodata_daily_rejects_malformed_payload(
+    payload: object,
+) -> None:
+    class _Client:
+        async def get(self, url: str, params: dict, headers: dict) -> _PagedResponse:
+            return _PagedResponse(payload)  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="FXMacroData"):
+        await fetch_fxmacrodata_daily(
+            "EURUSD", "2026-01-01", "2026-01-04", api_key="test-key", client=_Client()
+        )
