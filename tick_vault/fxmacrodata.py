@@ -37,9 +37,9 @@ def _clean_api_key(api_key: str | None) -> str:
 
 
 def _page_rows(payload: Any) -> list[dict[str, Any]]:
-    if isinstance(payload, dict) and "detail" in payload and "data" not in payload:
-        raise ValueError(f"FXMacroData request failed: {payload['detail']}")
-    page = payload.get("data", []) if isinstance(payload, dict) else None
+    if isinstance(payload, dict) and ("detail" in payload or "error" in payload):
+        raise ValueError("FXMacroData request failed: error response")
+    page = payload.get("data") if isinstance(payload, dict) else None
     if not isinstance(page, list):
         raise ValueError("FXMacroData returned an unexpected response shape")
     return page
@@ -102,15 +102,36 @@ async def fetch_fxmacrodata_daily(
         # until the whole window has been read.
         rows: list[dict] = []
         while True:
-            response = await client.get(url, params=params, headers=headers)
+            # Override caller-client defaults so the key cannot follow redirects.
+            response = await client.get(
+                url, params=params, headers=headers, follow_redirects=False,
+            )
             response.raise_for_status()
             payload = response.json()
             page = _page_rows(payload)
             rows.extend(page)
-            pagination = payload.get("pagination") or {}
-            if not page or not pagination.get("has_more"):
+            pagination = payload.get("pagination")
+            if pagination is None:
+                pagination = {}
+            if not isinstance(pagination, dict):
+                raise ValueError("FXMacroData returned invalid pagination metadata")
+            has_more = pagination.get("has_more", False)
+            if not isinstance(has_more, bool):
+                raise ValueError("FXMacroData returned invalid pagination metadata")
+            if has_more and not page:
+                raise ValueError("FXMacroData returned an inconsistent empty page")
+            if not has_more:
                 break
-            params["offset"] = pagination.get("next_offset") or len(rows)
+            next_offset = pagination.get("next_offset")
+            if next_offset is None:
+                next_offset = params["offset"] + len(page)
+            if (
+                isinstance(next_offset, bool)
+                or not isinstance(next_offset, int)
+                or next_offset <= params["offset"]
+            ):
+                raise ValueError("FXMacroData returned a non-advancing page offset")
+            params["offset"] = next_offset
         return _daily_rows_to_frame(rows)
     finally:
         if close_client:
